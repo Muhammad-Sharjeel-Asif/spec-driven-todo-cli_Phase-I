@@ -8,6 +8,14 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
+**Constitution Compliance**: All tasks must adhere to In-Memory Todo Console Application Constitution requirements:
+- Use only Python standard library (no external dependencies)
+- Store data in memory only (no file/database persistence)
+- All Python files must be in `/src` directory
+- Must use `uv` for environment and execution
+- Terminal-first CLI interface
+- Robust error handling
+
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.

@@ -31,7 +31,13 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- **Language Compliance**: Python 3.13+ with PEP-8 conventions (from Constitution)
+- **No External Dependencies**: Use only Python standard library unless explicitly allowed (from Constitution)
+- **In-Memory Storage**: No file, database, or external persistence allowed (from Constitution)
+- **Terminal-First UI**: Application must be fully operable via CLI (from Constitution)
+- **Error Handling**: Never terminate unexpectedly, show helpful messages to users (from Constitution)
+- **Project Structure**: All Python files must be in /src directory (from Constitution)
+- **Tooling**: Must use `uv` for environment and execution (from Constitution)
 
 ## Project Structure
 
