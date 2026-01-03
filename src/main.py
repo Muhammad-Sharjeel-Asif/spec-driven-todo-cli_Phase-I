@@ -2,7 +2,135 @@
 CLI entry point for the Todo Console Application
 """
 import re
-from todo import TodoManager
+from todo import TodoManager, validate_time_format
+
+# ANSI Color Code Constants
+COLOR_RESET = '\033[0m'
+COLOR_RED = '\033[31m'
+COLOR_GREEN = '\033[32m'
+COLOR_YELLOW = '\033[33m'
+COLOR_BLUE = '\033[34m'
+COLOR_MAGENTA = '\033[35m'
+COLOR_CYAN = '\033[36m'
+COLOR_WHITE = '\033[37m'
+COLOR_BOLD = '\033[1m'
+COLOR_UNDERLINE = '\033[4m'
+
+
+def format_task_table(tasks):
+    """
+    Returns string representation of tasks in table format with headers
+    """
+    if not tasks:
+        return "No tasks found."
+
+    # Define column widths
+    id_width = 5
+    title_width = 30
+    status_width = 12
+    priority_width = 10
+    tags_width = 20
+    due_width = 20
+
+    # Create header
+    header = (f"{'ID':<{id_width}} {'TITLE':<{title_width}} {'STATUS':<{status_width}} "
+              f"{'PRIORITY':<{priority_width}} {'TAGS':<{tags_width}} {'DUE DATE':<{due_width}}")
+    separator = "-" * len(header)
+
+    output = [COLOR_BOLD + header + COLOR_RESET, separator]
+
+    for task in tasks:
+        status = "Completed" if task.completed else "Pending"
+        status_color = COLOR_GREEN if task.completed else COLOR_RED
+        priority_color = COLOR_YELLOW if task.priority == "high" else COLOR_CYAN if task.priority == "medium" else COLOR_WHITE
+
+        # Format task data
+        task_line = (f"{str(task.id):<{id_width}} "
+                    f"{task.title[:title_width-1] + '..' if len(task.title) >= title_width else task.title:<{title_width}} "
+                    f"{status_color + status + COLOR_RESET:<{status_width}} "
+                    f"{priority_color + task.priority + COLOR_RESET:<{priority_width}} "
+                    f"{', '.join(task.tags)[:tags_width-1] + '..' if len(', '.join(task.tags)) >= tags_width else ', '.join(task.tags):<{tags_width}} "
+                    f"{task.due_at.strftime('%Y-%m-%d %H:%M') if task.due_at else '':<{due_width}}")
+
+        output.append(task_line)
+
+    return "\n".join(output)
+
+
+def apply_color_formatting(text: str, style: str) -> str:
+    """
+    Applies ANSI color codes to text without changing content meaning
+    """
+    if style == "header":
+        return COLOR_BOLD + text + COLOR_RESET
+    elif style == "completed":
+        return COLOR_GREEN + text + COLOR_RESET
+    elif style == "pending":
+        return COLOR_RED + text + COLOR_RESET
+    elif style == "high_priority":
+        return COLOR_RED + COLOR_BOLD + text + COLOR_RESET
+    elif style == "medium_priority":
+        return COLOR_YELLOW + text + COLOR_RESET
+    elif style == "low_priority":
+        return COLOR_CYAN + text + COLOR_RESET
+    else:
+        return text
+
+
+def format_task_table_enhanced(tasks):
+    """
+    Enhanced table formatting with color support
+    """
+    if not tasks:
+        return "No tasks found."
+
+    # Define column widths
+    id_width = 5
+    title_width = 30
+    status_width = 12
+    priority_width = 12
+    tags_width = 20
+    due_width = 20
+
+    # Create header with color
+    header = (f"{'ID':<{id_width}} {'TITLE':<{title_width}} {'STATUS':<{status_width}} "
+              f"{'PRIORITY':<{priority_width}} {'TAGS':<{tags_width}} {'DUE DATE':<{due_width}}")
+    header = apply_color_formatting(header, "header")
+
+    separator = "-" * len(header.replace(COLOR_RESET, '').replace(COLOR_BOLD, ''))
+    separator = apply_color_formatting(separator, "header")
+
+    output = [header, separator]
+
+    for task in tasks:
+        status = "Completed" if task.completed else "Pending"
+        priority = task.priority
+
+        # Format task data with appropriate colors
+        id_str = f"{str(task.id):<{id_width}}"
+        title_str = f"{task.title[:title_width-1] + '..' if len(task.title) >= title_width else task.title:<{title_width}}"
+
+        status_str = f"{status:<{status_width}}"
+        if task.completed:
+            status_str = apply_color_formatting(status_str, "completed")
+        else:
+            status_str = apply_color_formatting(status_str, "pending")
+
+        priority_str = f"{priority:<{priority_width}}"
+        if priority == "high":
+            priority_str = apply_color_formatting(priority_str, "high_priority")
+        elif priority == "medium":
+            priority_str = apply_color_formatting(priority_str, "medium_priority")
+        else:
+            priority_str = apply_color_formatting(priority_str, "low_priority")
+
+        tags_str = f"{', '.join(task.tags)[:tags_width-1] + '..' if len(', '.join(task.tags)) >= tags_width else ', '.join(task.tags):<{tags_width}}"
+        due_str = f"{task.due_at.strftime('%Y-%m-%d %H:%M') if task.due_at else '':<{due_width}}"
+
+        task_line = f"{id_str} {title_str} {status_str} {priority_str} {tags_str} {due_str}"
+        output.append(task_line)
+
+    return "\n".join(output)
 
 
 def main():
@@ -15,6 +143,9 @@ def main():
 
     print("Application initialized successfully!")
     print("Use the menu options to manage your tasks.")
+
+    # Start the time checker to handle recurring reminders
+    todo_manager.start_time_checker()
 
     # Check for overdue tasks when application starts
     try:
@@ -90,6 +221,32 @@ def main():
                     if todo_manager.validate_recurrence(recurrence_input):
                         recurrence = recurrence_input
                         print(f"Recurrence set to: {recurrence}")
+
+                        # Ask for time if recurring task
+                        time_input = input("Enter time for recurring task (HH:MM format, e.g., 14:30, or press Enter for default 00:00): ").strip()
+                        if time_input:
+                            if validate_time_format(time_input):
+                                print(f"Time set to: {time_input}")
+                                # If due_at is not set, create a default one with today's date and the specified time
+                                if due_at is None:
+                                    from datetime import datetime
+                                    today = datetime.now().date()
+                                    datetime_str = f"{today} {time_input}"
+                                    due_at = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+                                else:
+                                    # Update the time component of the existing due_at
+                                    time_obj = datetime.strptime(time_input, "%H:%M").time()
+                                    due_at = due_at.replace(
+                                        hour=time_obj.hour,
+                                        minute=time_obj.minute,
+                                        second=time_obj.second,
+                                        microsecond=time_obj.microsecond
+                                    )
+                            else:
+                                print(f"Warning: Invalid time format '{time_input}'. Using default time 00:00.")
+                        else:
+                            # Default time is 00:00, which is already the default
+                            print("Using default time 00:00.")
                     else:
                         print(f"Warning: Invalid recurrence value '{recurrence_input}'. Task will be created without recurrence.")
 
@@ -117,11 +274,7 @@ def main():
                     print("No tasks found.")
                 else:
                     print("\nAll Tasks:")
-                    for task in all_tasks:
-                        status = "Completed" if task.completed else "Pending"
-                        due_info = f", Due: {task.due_at.strftime('%Y-%m-%d %H:%M')}" if task.due_at else ""
-                        recurrence_info = f", Recurs: {task.recurrence}" if task.recurrence else ""
-                        print(f"ID: {task.id}, Title: {task.title}, Description: {task.description}, Status: {status}, Priority: {task.priority}, Tags: {', '.join(task.tags)}, Created: {task.created_at.strftime('%Y-%m-%d %H:%M')}{due_info}{recurrence_info}")
+                    print(format_task_table_enhanced(all_tasks))
 
             elif choice == "3":
                 # Implement CLI menu option for updating tasks that prompts for task ID and new title/description values, validates input, and calls todo.update_task
@@ -206,6 +359,32 @@ def main():
                     elif todo_manager.validate_recurrence(recurrence_input):
                         new_recurrence = recurrence_input
                         print(f"New recurrence set to: {new_recurrence}")
+
+                        # If updating to a recurring task, ask for time
+                        if current_task.recurrence != new_recurrence and new_recurrence is not None:
+                            time_input = input("Enter time for recurring task (HH:MM format, e.g., 14:30, or press Enter for default 00:00): ").strip()
+                            if time_input:
+                                if validate_time_format(time_input):
+                                    print(f"Time set to: {time_input}")
+                                    # Update the time component of the existing due_at
+                                    if new_due_at is not None:
+                                        time_obj = datetime.strptime(time_input, "%H:%M").time()
+                                        new_due_at = new_due_at.replace(
+                                            hour=time_obj.hour,
+                                            minute=time_obj.minute,
+                                            second=time_obj.second,
+                                            microsecond=time_obj.microsecond
+                                        )
+                                    elif current_task.due_at is not None:
+                                        time_obj = datetime.strptime(time_input, "%H:%M").time()
+                                        new_due_at = current_task.due_at.replace(
+                                            hour=time_obj.hour,
+                                            minute=time_obj.minute,
+                                            second=time_obj.second,
+                                            microsecond=time_obj.microsecond
+                                        )
+                                else:
+                                    print(f"Warning: Invalid time format '{time_input}'. Using default time 00:00.")
                     else:
                         print(f"Warning: Invalid recurrence value '{recurrence_input}'. Keeping current recurrence.")
                         new_recurrence = None
@@ -214,32 +393,17 @@ def main():
                 new_title = new_title if new_title else None
                 new_description = new_description if new_description else None
 
-                # Update the task directly since we need to handle new fields
-                updated = False
-                for task in todo_manager.tasks:
-                    if task.id == task_id:
-                        if new_title is not None:
-                            task.title = new_title
-                            updated = True
-                        if new_description is not None:
-                            task.description = new_description
-                            updated = True
-                        if new_priority is not None:
-                            task.priority = new_priority
-                            updated = True
-                        if new_tags is not None:
-                            task.tags = new_tags
-                            updated = True
-                        if new_due_at is not None:
-                            task.due_at = new_due_at
-                            updated = True
-                        if new_recurrence is not None:
-                            task.recurrence = new_recurrence
-                            updated = True
+                # Update the task using the proper update_task method
+                updated_task = todo_manager.update_task(
+                    task_id,
+                    new_title=new_title,
+                    new_description=new_description,
+                    new_priority=new_priority,
+                    new_tags=new_tags,
+                    new_due_at=new_due_at
+                )
 
-                        break
-
-                if updated:
+                if updated_task:
                     print(f"Task with ID {task_id} updated successfully!")
                 else:
                     print("No changes were made to the task.")

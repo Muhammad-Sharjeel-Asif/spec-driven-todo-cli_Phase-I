@@ -213,6 +213,7 @@ See `.specify/memory/constitution.md` for code quality, testing, performance, se
 - Python 3.13+ (from Constitution) + Python standard library only (from Constitution) (001-todo-console-basic)
 - In-memory only, no persistence (from Constitution and Spec) (001-todo-console-basic)
 - Python 3.13+ with PEP-8 conventions (from Constitution) + Python standard library only (from Constitution) (001-todo-time-reminders)
+- In-memory only, no persistence (from Constitution) (001-recurring-time-ui)
 
 ## Recent Changes
 - 001-todo-console-basic: Added Python 3.13+ (from Constitution) + Python standard library only (from Constitution)

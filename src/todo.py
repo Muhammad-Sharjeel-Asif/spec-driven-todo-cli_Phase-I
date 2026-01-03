@@ -1,11 +1,118 @@
 """
 Core task operations for the Todo Console Application
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as time_obj
 import time
 import threading
 from typing import List, Optional
 from models import Task
+
+
+def validate_time_format(time_str: str) -> bool:
+    """
+    Validates that input string matches HH:MM format where HH is 00-23 and MM is 00-59
+    """
+    try:
+        datetime.strptime(time_str, "%H:%M")
+        return True
+    except ValueError:
+        return False
+
+
+def parse_time_input(time_input: str):
+    """
+    Parses user input and returns time component or None
+    """
+    try:
+        parsed_time = datetime.strptime(time_input, "%H:%M").time()
+        return parsed_time
+    except ValueError:
+        return None
+
+
+def set_recurring_task_time(task, time_str: str):
+    """
+    Updates the time component of task.due_at while preserving date
+    """
+    if not task.due_at:
+        # If there's no due date, we can't set the time component
+        return task
+
+    if not validate_time_format(time_str):
+        raise ValueError(f"Invalid time format: {time_str}")
+
+    time_component = parse_time_input(time_str)
+    if time_component:
+        task.due_at = task.due_at.replace(
+            hour=time_component.hour,
+            minute=time_component.minute,
+            second=time_component.second,
+            microsecond=time_component.microsecond
+        )
+
+    return task
+
+
+def advance_recurring_task_preserve_time(task):
+    """
+    Advances date according to recurrence pattern while preserving original time component
+    """
+    if not task.recurrence or not task.due_at:
+        return task  # No-op for non-recurring tasks
+
+    current_due = task.due_at
+    time_component = current_due.time()  # Preserve the time component
+
+    if task.recurrence == "daily":
+        new_due = current_due + timedelta(days=1)
+    elif task.recurrence == "weekly":
+        new_due = current_due + timedelta(weeks=1)
+    elif task.recurrence == "monthly":
+        # Handle monthly recurrence with proper day adjustment
+        new_due = _advance_month(current_due)
+    else:
+        # Invalid recurrence, don't advance
+        return task
+
+    # Preserve the original time component
+    task.due_at = new_due.replace(
+        hour=time_component.hour,
+        minute=time_component.minute,
+        second=time_component.second,
+        microsecond=time_component.microsecond
+    )
+
+    return task
+
+
+def _advance_month(current_date: datetime) -> datetime:
+    """
+    Advance date by one month, handling cases where the target day doesn't exist
+    (e.g., Jan 31 -> Feb 28/29, Mar 31 -> Apr 30)
+    """
+    year = current_date.year
+    month = current_date.month
+    day = current_date.day
+
+    # Calculate next month and year
+    if month == 12:
+        next_year = year + 1
+        next_month = 1
+    else:
+        next_year = year
+        next_month = month + 1
+
+    # Handle day overflow by using the last day of the target month if needed
+    import calendar
+    max_day_in_next_month = calendar.monthrange(next_year, next_month)[1]
+
+    if day > max_day_in_next_month:
+        # Use the last day of the next month instead
+        next_day = max_day_in_next_month
+    else:
+        next_day = day
+
+    return current_date.replace(year=next_year, month=next_month, day=next_day)
 
 
 class TodoManager:
@@ -91,13 +198,13 @@ class TodoManager:
         """
         return self.tasks.copy()  # Return a copy to prevent external modification
 
-    def update_task(self, task_id: int, new_title: str = None, new_description: str = None, new_priority: str = None, new_tags: List[str] = None) -> Optional[Task]:
+    def update_task(self, task_id: int, new_title: str = None, new_description: str = None, new_priority: str = None, new_tags: List[str] = None, new_due_at = None) -> Optional[Task]:
         """
         Implement update_task function that accepts task_id and new title/description/priority/tags values,
         validates input, and updates the task
         """
         # Use the error-handling version and return the appropriate result
-        error_msg = self.update_task_with_error_handling(task_id, new_title, new_description, new_priority, new_tags)
+        error_msg = self.update_task_with_error_handling(task_id, new_title, new_description, new_priority, new_tags, new_due_at)
 
         if error_msg is None:
             # If no error, find and return the updated task
@@ -179,7 +286,7 @@ class TodoManager:
         except Exception as e:
             return self._handle_error(f"Failed to add task: {str(e)}")
 
-    def update_task_with_error_handling(self, task_id: int, new_title: str = None, new_description: str = None, new_priority: str = None, new_tags: List[str] = None) -> Optional[str]:
+    def update_task_with_error_handling(self, task_id: int, new_title: str = None, new_description: str = None, new_priority: str = None, new_tags: List[str] = None, new_due_at = None) -> Optional[str]:
         """
         Add input validation for all user inputs across all functions in src/todo.py
         """
@@ -203,6 +310,7 @@ class TodoManager:
             updated_description = new_description if new_description is not None else current_task.description
             updated_priority = new_priority if new_priority is not None else current_task.priority
             updated_tags = new_tags if new_tags is not None else current_task.tags
+            updated_due_at = new_due_at if new_due_at is not None else current_task.due_at
 
             # Validate the new values
             if not self._validate_input(updated_title, updated_description):
@@ -224,6 +332,7 @@ class TodoManager:
             current_task.description = updated_description
             current_task.priority = updated_priority
             current_task.tags = updated_tags
+            current_task.due_at = updated_due_at
 
             return None  # Success, no error
         except Exception as e:
@@ -387,6 +496,7 @@ class TodoManager:
             return
 
         current_due = task.due_at
+        time_component = current_due.time()  # Preserve the time component
         if task.recurrence == "daily":
             new_due = current_due + timedelta(days=1)
         elif task.recurrence == "weekly":
@@ -398,7 +508,13 @@ class TodoManager:
             # Invalid recurrence, don't advance
             return
 
-        task.due_at = new_due
+        # Preserve the original time component
+        task.due_at = new_due.replace(
+            hour=time_component.hour,
+            minute=time_component.minute,
+            second=time_component.second,
+            microsecond=time_component.microsecond
+        )
 
     def _advance_month(self, current_date: datetime) -> datetime:
         """
@@ -437,6 +553,7 @@ class TodoManager:
         import sys
         import time
         from datetime import datetime
+        import threading
 
         # Format the reminder message
         description = task.description if task.description else ""
@@ -445,8 +562,13 @@ class TodoManager:
         # Print the reminder
         print(reminder_msg)
 
-        # Sleep for 10 seconds to keep the reminder visible
-        time.sleep(10)
+        # Sleep for 10 seconds to keep the reminder visible in a separate thread to avoid blocking
+        def sleep_then_continue():
+            time.sleep(10)
+
+        # Start the sleep in a separate thread so it doesn't block the time checker
+        reminder_thread = threading.Thread(target=sleep_then_continue, daemon=True)
+        reminder_thread.start()
 
     def check_and_process_reminders(self) -> List[Task]:
         """
@@ -572,6 +694,24 @@ class TodoManager:
             return True
         # Allow any date, past or future
         return True
+
+    def combine_date_and_time(self, date_obj: datetime, time_str: str) -> Optional[datetime]:
+        """
+        Create helper function to combine date and time components
+        """
+        if not validate_time_format(time_str):
+            return None
+
+        time_obj = parse_time_input(time_str)
+        if time_obj is None:
+            return None
+
+        return date_obj.replace(
+            hour=time_obj.hour,
+            minute=time_obj.minute,
+            second=time_obj.second,
+            microsecond=time_obj.microsecond
+        )
 
     def validate_task_update(self, due_at: Optional[datetime], recurrence: Optional[str]) -> Optional[str]:
         """
